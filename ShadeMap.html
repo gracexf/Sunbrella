@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atlanta Shade Route</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Leaflet map and mobile responsiveness */
+        #map {
+            height: 100vh;
+            width: 100%;
+            z-index: 10;
+        }
+        .leaflet-container {
+            background-color: #f0f0f0;
+            border-radius: 0.75rem; /* rounded-xl */
+        }
+        .control-panel {
+            position: absolute;
+            top: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            max-width: 95%;
+            width: 500px;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+        }
+        /* Style for the loading/message modal */
+        #messageBox {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+    <!-- Load Leaflet CSS and JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+</head>
+<body class="bg-gray-50 font-sans antialiased overflow-hidden">
+
+    <!-- Message Box (Modal) -->
+    <div id="messageBox">
+        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm text-center">
+            <p id="messageText" class="text-lg font-semibold text-gray-800 mb-4">Loading...</p>
+            <button onclick="hideMessage()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">OK</button>
+        </div>
+    </div>
+
+    <!-- Main Map Container -->
+    <div id="map"></div>
+
+    <!-- Control Panel -->
+    <div class="control-panel bg-white p-4 rounded-xl flex flex-col space-y-3">
+        <h1 class="text-2xl font-extrabold text-blue-800 text-center">Atlanta Shade Router</h1>
+
+        <!-- User Input Fields -->
+        <div class="space-y-2">
+            <input type="text" id="startLocation" value="Ponce City Market, Atlanta" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Start Location">
+            <input type="text" id="endLocation" value="Piedmont Park, Atlanta" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Destination">
+        </div>
+
+        <!-- Time/Date/Preference Controls -->
+        <div class="flex space-x-2">
+            <input type="time" id="timeOfDay" value="14:00" class="flex-1 p-2 border border-gray-300 rounded-lg">
+            <input type="date" id="dateInput" class="flex-1 p-2 border border-gray-300 rounded-lg">
+        </div>
+
+        <button onclick="findShadyRoutes()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01] active:scale-95">
+            Find Shady Routes
+        </button>
+
+        <!-- Route Status/Info -->
+        <div id="routeInfo" class="text-sm text-gray-600 space-y-1 mt-2">
+            <p><span class="font-semibold text-blue-600">User ID:</span> <span id="displayUserId">...</span></p>
+            <p id="shortestPathInfo" class="hidden"></p>
+            <p id="shadePathInfo" class="hidden"></p>
+        </div>
+    </div>
+
+    <!-- Load Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables MUST be defined outside the module for access in the script below
+        window.initializeApp = initializeApp;
+        window.getAuth = getAuth;
+        window.signInAnonymously = signInAnonymously;
+        window.signInWithCustomToken = signInWithCustomToken;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.getFirestore = getFirestore;
+        window.setLogLevel = setLogLevel;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.collection = collection;
+        window.query = query;
+        window.where = where;
+        window.getDocs = getDocs;
+
+        // Set log level for debugging
+        setLogLevel('Debug');
+    </script>
+    
+    <script>
+        // --- Core Global Variables ---
+        const apiKey = ""; // Keep this empty
+        const modelName = "gemini-2.5-flash-preview-09-2025"; // For geocoding/info API calls
+        const geocodingApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+        // Global Firebase vars, will be initialized below
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'shade-route-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "MOCK_API_KEY", projectId: "MOCK_PROJECT_ID" };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+
+        let app, db, auth, userId = 'loading';
+
+        let map;
+        let routeLayers = [];
+        let markerStart, markerEnd;
+
+        // --- Utility Functions ---
+
+        /** Displays a custom modal message. */
+        function showMessage(text) {
+            document.getElementById('messageText').innerText = text;
+            document.getElementById('messageBox').style.display = 'flex';
+        }
+
+        /** Hides the custom modal message. */
+        function hideMessage() {
+            document.getElementById('messageBox').style.display = 'none';
+        }
+
+        /** Converts base64 to ArrayBuffer (required for TTS functions, though not used here). */
+        function base64ToArrayBuffer(base64) {
+            const binary_string = window.atob(base64);
+            const len = binary_string.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binary_string.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        /**
+         * Simulates a geocoding API call to convert location names to Lat/Lon.
+         * In a real hackathon, you'd integrate a service like Nominatim or Google Geocoding.
+         * This uses the Gemini API for a structured (but slightly slower) mock geocoding response.
+         */
+        async function geocode(locationName) {
+            const systemPrompt = "You are a geocoding service. Given a location, respond ONLY with a JSON array containing one object with the keys 'lat' (latitude) and 'lon' (longitude) for the Atlanta Metro Area. If the location is too vague or outside Atlanta, use the coordinates for downtown Atlanta (33.7490, -84.3880). Ensure the response is valid JSON.";
+            
+            const payload = {
+                contents: [{ parts: [{ text: `Find coordinates for: ${locationName}` }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "ARRAY",
+                        items: {
+                            type: "OBJECT",
+                            properties: {
+                                "lat": { "type": "NUMBER" },
+                                "lon": { "type": "NUMBER" }
+                            },
+                            propertyOrdering: ["lat", "lon"]
+                        }
+                    }
+                }
+            };
+
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const response = await fetch(geocodingApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        // Throw an error to trigger the catch block and retry
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 && result.candidates[0].content.parts.length > 0) {
+                        const jsonText = result.candidates[0].content.parts[0].text;
+                        const parsedJson = JSON.parse(jsonText); // This could throw, which is fine (goes to catch)
+                        if (parsedJson && parsedJson.length > 0) {
+                            // Successful geocode
+                            return { lat: parsedJson[0].lat, lon: parsedJson[0].lon };
+                        } else {
+                            // API success, but empty/invalid JSON content
+                            throw new Error("Geocoding API returned empty or invalid JSON structure.");
+                        }
+                    } else {
+                         // API success, but no candidates (e.g., safety block or empty response)
+                         throw new Error("Geocoding API returned no candidates.");
+                    }
+                } catch (error) {
+                    console.error(`Attempt ${attempt + 1}: Geocoding failed for "${locationName}". Error:`, error.message);
+                    if (attempt >= 2) {
+                        // If this was the last attempt, break out and use the final fallback
+                        break;
+                    }
+                    // Wait before retrying
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000)); // Exponential backoff
+                }
+            }
+
+            // Final fallback if all attempts fail
+            console.warn(`Geocoding failed for "${locationName}" after 3 attempts. Using default coordinates.`);
+            return { lat: 33.7490, lon: -84.3880 };
+        }
+
+
+        // --- FIREBASE AND AUTHENTICATION ---
+
+        async function initFirebaseAndAuth() {
+            try {
+                // 1. Initialize Firebase
+                app = window.initializeApp(firebaseConfig);
+                db = window.getFirestore(app);
+                auth = window.getAuth(app);
+
+                // 2. Set up Auth State Listener
+                await new Promise(resolve => {
+                    const unsubscribe = window.onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            userId = user.uid;
+                        } else {
+                            // If user is not authenticated, sign in anonymously
+                            userId = 'anonymous'; // Temp ID before anonymous sign-in
+                            try {
+                                if (initialAuthToken) {
+                                    const userCredential = await window.signInWithCustomToken(auth, initialAuthToken);
+                                    userId = userCredential.user.uid;
+                                } else {
+                                    const userCredential = await window.signInAnonymously(auth);
+                                    userId = userCredential.user.uid;
+                                }
+                            } catch (e) {
+                                console.error("Anonymous/Custom Token Sign-in Failed:", e);
+                                // Fallback to a random ID if authentication completely fails
+                                userId = crypto.randomUUID();
+                            }
+                        }
+                        
+                        document.getElementById('displayUserId').textContent = userId;
+                        // Resolve the promise once authentication is settled
+                        unsubscribe(); 
+                        resolve(); 
+                    });
+                });
+                console.log("Firebase initialized. User ID:", userId);
+
+            } catch (error) {
+                console.error("Critical Firebase Initialization Error:", error);
+                document.getElementById('displayUserId').textContent = 'Error';
+            }
+        }
+
+
+        // --- MAP AND ROUTING LOGIC ---
+
+        /** Initializes the Leaflet map centered on Atlanta. */
+        function initMap() {
+            // Default Atlanta coordinates
+            const atlantaCoords = [33.7490, -84.3880]; 
+
+            map = L.map('map').setView(atlantaCoords, 13); // Zoom level 13 for city view
+
+            // OpenStreetMap tile layer (the base map)
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            // Set initial date to today
+            document.getElementById('dateInput').valueAsDate = new Date();
+        }
+
+        /** Clears existing routes and markers from the map. */
+        function clearMap() {
+            routeLayers.forEach(layer => map.removeLayer(layer));
+            routeLayers = [];
+            if (markerStart) map.removeLayer(markerStart);
+            if (markerEnd) map.removeLayer(markerEnd);
+            document.getElementById('shortestPathInfo').classList.add('hidden');
+            document.getElementById('shadePathInfo').classList.add('hidden');
+        }
+
+        /**
+         * Simplified function to determine the general sun azimuth (direction).
+         * This is a "hackathon shortcut" to simulate real-time shadow projection.
+         * Azimuth in degrees (0=N, 90=E, 180=S, 270=W).
+         *
+         * @param {Date} fullDate - Date object combining date and time.
+         * @returns {number} Sun azimuth in degrees.
+         */
+        function getSunAzimuth(fullDate) {
+            const hours = fullDate.getHours();
+            const month = fullDate.getMonth(); // 0=Jan, 11=Dec
+
+            // Simplified Latitude adjustment (Atlanta is in Northern Hemisphere)
+            // Summer (May-Aug): Sun is high, shade is localized and intense. Noon sun is near zenith (overhead).
+            // Winter (Nov-Feb): Sun is low, shadows are long, sun is more South-facing at noon.
+
+            // 1. Determine time of day
+            let azimuth;
+            if (hours >= 6 && hours < 10) {
+                // Morning (East)
+                azimuth = 90; 
+            } else if (hours >= 10 && hours < 14) {
+                // Mid-day (South/Overhead)
+                // In Atlanta, even at noon, the sun is rarely perfectly overhead, but it's southerly.
+                azimuth = 180; 
+            } else if (hours >= 14 && hours < 18) {
+                // Afternoon (West)
+                azimuth = 270; 
+            } else {
+                // Night/Early Morning (No sun) - Assume shortest path is best
+                return -1; // Special flag for night
+            }
+
+            // 2. Adjust for season (Simplified)
+            // Winter means lower sun, making shadows longer and more pronounced.
+            if (month >= 10 || month <= 2) { // Nov, Dec, Jan, Feb
+                // Winter - longer shadows, so shade calculation matters more
+                azimuth += 10; // Slightly more southerly bias
+            } else if (month >= 4 && month <= 7) { // May, Jun, Jul, Aug
+                // Summer - higher sun, more overhead, less directional difference at noon
+                if (hours >= 10 && hours < 14) {
+                    azimuth = 170; // Closer to overhead (South-ish)
+                }
+            }
+
+            return azimuth % 360;
+        }
+
+        /**
+         * Main function to simulate the shade-optimized routing algorithm.
+         *
+         * @param {object} start - {lat, lon}
+         * @param {object} end - {lat, lon}
+         */
+        async function findShadyRoutes() {
+            showMessage("Calculating routes and simulating shade layer...");
+            clearMap();
+
+            const startName = document.getElementById('startLocation').value;
+            const endName = document.getElementById('endLocation').value;
+            const timeStr = document.getElementById('timeOfDay').value;
+            const dateStr = document.getElementById('dateInput').value;
+            const fullDate = new Date(`${dateStr}T${timeStr}:00`);
+            
+            const sunAzimuth = getSunAzimuth(fullDate);
+            const isNight = sunAzimuth === -1;
+            
+            if (isNight) {
+                 showMessage("It's dark! Shade routing is disabled. Showing shortest path.");
+            }
+
+            // 1. Geocode locations in parallel
+            const [start, end] = await Promise.all([
+                geocode(startName),
+                geocode(endName)
+            ]);
+
+            // Add markers to the map
+            markerStart = L.marker([start.lat, start.lon]).addTo(map).bindPopup(`Start: ${startName}`).openPopup();
+            markerEnd = L.marker([end.lat, end.lon]).addTo(map).bindPopup(`End: ${endName}`).openPopup();
+            
+            // Adjust map view to fit both points
+            const bounds = L.latLngBounds([start.lat, start.lon], [end.lat, end.lon]);
+            map.fitBounds(bounds, { padding: [50, 50] });
+
+            // 2. Mock Route Generation (Simulating an external routing service)
+            // A simple interpolation between start and end points
+            const shortestPathCoords = generateSimpleRoute(start, end, 10);
+            
+            // 3. Shade-Optimized Route Modification (The Core Hack)
+            let shadeOptimizedCoords = [...shortestPathCoords]; // Start with the shortest path
+            let shortestDistance = calculateDistance(shortestPathCoords);
+            let shadeDistance, shadeCoverage;
+
+            if (!isNight) {
+                // Apply a simple deviation for shade preference. 
+                // In a real app, the routing engine (Graphhopper/Valhalla) would use the sunAzimuth 
+                // to cost segments on the sunny side higher. Here, we simulate a slight detour
+                // (e.g., through a nearby known shady area like a park).
+                
+                // Mock Shade Detour (e.g., detour 500m NW if sun is from SE (morning) or SW (afternoon))
+                const deviationLat = (sunAzimuth > 180 && sunAzimuth < 360) ? 0.005 : -0.003; // Detour North in PM/West Sun
+                const deviationLon = (sunAzimuth > 90 && sunAzimuth < 270) ? -0.005 : 0.003; // Detour West in Mid-day/Evening
+
+                shadeOptimizedCoords = generateSimpleRoute(start, end, 15); // Longer segment count
+                
+                // Insert a detour in the middle of the route for "shade"
+                const midpoint = Math.floor(shadeOptimizedCoords.length / 2);
+                const detourPoint = { 
+                    lat: shadeOptimizedCoords[midpoint].lat + deviationLat, 
+                    lon: shadeOptimizedCoords[midpoint].lon + deviationLon 
+                };
+                shadeOptimizedCoords.splice(midpoint, 0, detourPoint);
+                
+                shadeDistance = calculateDistance(shadeOptimizedCoords);
+                shadeCoverage = calculateShadeScore(shadeOptimizedCoords, sunAzimuth);
+                
+            } else {
+                // Night mode: Shade route is the same as shortest route
+                shadeOptimizedCoords = shortestPathCoords;
+                shadeDistance = shortestDistance;
+                shadeCoverage = 0;
+            }
+
+
+            // 4. Draw Routes and Display Info
+            
+            // Draw Shortest Path (Blue, dashed)
+            const shortestPolyline = L.polyline(shortestPathCoords.map(c => [c.lat, c.lon]), { color: '#3b82f6', weight: 4, dashArray: '5, 10', opacity: 0.7 }).addTo(map);
+            routeLayers.push(shortestPolyline);
+            
+            // Draw Shade-Optimized Path (Green, solid)
+            const shadePolyline = L.polyline(shadeOptimizedCoords.map(c => [c.lat, c.lon]), { color: '#10b981', weight: 5, opacity: 1 }).addTo(map);
+            routeLayers.push(shadePolyline);
+
+
+            // 5. Update UI
+            document.getElementById('shortestPathInfo').innerHTML = `
+                <span class="font-bold text-blue-600">Shortest Path (Dashed):</span> ${shortestDistance.toFixed(2)} km.
+            `;
+            document.getElementById('shortestPathInfo').classList.remove('hidden');
+
+            document.getElementById('shadePathInfo').innerHTML = `
+                <span class="font-bold text-green-600">Shade-Optimized Path (Solid):</span> ${shadeDistance.toFixed(2)} km | Shade Score: ${shadeCoverage.toFixed(0)}%.
+            `;
+            document.getElementById('shadePathInfo').classList.remove('hidden');
+
+            hideMessage(); // Automatically close the "Calculating..." modal
+            
+            // Hide the main control panel to show the full map
+            document.querySelector('.control-panel').style.display = 'none';
+        }
+
+        /**
+         * Generates a simple interpolated route (hackathon shortcut for routing API).
+         * @param {object} start - {lat, lon}
+         * @param {object} end - {lat, lon}
+         * @param {number} segments - Number of steps in the interpolation.
+         * @returns {Array<object>} Array of {lat, lon} coordinates.
+         */
+        function generateSimpleRoute(start, end, segments) {
+            const route = [];
+            for (let i = 0; i <= segments; i++) {
+                const fraction = i / segments;
+                const lat = start.lat + (end.lat - start.lat) * fraction;
+                const lon = start.lon + (end.lon - start.lon) * fraction;
+                route.push({ lat, lon });
+            }
+            return route;
+        }
+
+        /** Calculates distance between coordinates (Haversine formula, simplified for this prototype). */
+        function calculateDistance(coords) {
+            if (coords.length < 2) return 0;
+            let totalDist = 0;
+            const R = 6371; // Earth radius in km
+
+            for (let i = 0; i < coords.length - 1; i++) {
+                const c1 = coords[i];
+                const c2 = coords[i+1];
+
+                const dLat = (c2.lat - c1.lat) * Math.PI / 180;
+                const dLon = (c2.lon - c1.lon) * Math.PI / 180;
+                const a = 
+                    0.5 - Math.cos(dLat)/2 + 
+                    Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) * (1 - Math.cos(dLon)) / 2;
+                totalDist += R * 2 * Math.asin(Math.sqrt(a));
+            }
+            return totalDist;
+        }
+
+        /**
+         * Simulates a "Shade Score" based on sun position and a few mock shady areas.
+         * This function simulates the work of integrating GIS data for a hackathon.
+         * @param {Array<object>} coords - Route coordinates.
+         * @param {number} sunAzimuth - Sun direction (0-360).
+         * @returns {number} Average shade score (0-100).
+         */
+        function calculateShadeScore(coords, sunAzimuth) {
+            if (sunAzimuth === -1) return 0; // Night
+            
+            // Mock Shady Areas (Coordinates near a real park in Atlanta for effect)
+            const shadyAreas = [
+                { lat: 33.7820, lon: -84.3810, radius: 0.005, score: 70 }, // Piedmont Park area
+                { lat: 33.7650, lon: -84.4000, radius: 0.003, score: 90 }  // Central Atlanta with assumed high canopy
+            ];
+
+            let totalShadeScore = 0;
+            let numSegments = 0;
+
+            for (let i = 0; i < coords.length; i++) {
+                const c = coords[i];
+                let segmentScore = 0;
+
+                // 1. Check proximity to high-canopy mock areas
+                shadyAreas.forEach(area => {
+                    const latDiff = Math.abs(c.lat - area.lat);
+                    const lonDiff = Math.abs(c.lon - area.lon);
+                    if (latDiff < area.radius && lonDiff < area.radius) {
+                        segmentScore = Math.max(segmentScore, area.score);
+                    }
+                });
+
+                // 2. Add directional shade (Buildings/Trees)
+                // This simulates the side-of-street shade based on the sun's direction.
+                // A path running perpendicular to the sun's rays and on the opposite side 
+                // of the sun is shadiest (e.g., walking North in the PM sun).
+                if (i < coords.length - 1) {
+                    const nextC = coords[i+1];
+                    // Calculate the bearing of the current street segment
+                    const segmentBearing = Math.atan2(
+                        Math.sin(nextC.lon - c.lon) * Math.cos(nextC.lat),
+                        Math.cos(c.lat) * Math.sin(nextC.lat) - Math.sin(c.lat) * Math.cos(nextC.lat) * Math.cos(nextC.lon - c.lon)
+                    ) * (180 / Math.PI); // Convert to degrees - this is complex, let's simplify.
+
+                    // SIMPLIFIED DIRECTIONAL LOGIC:
+                    // If the segment is mostly North-South (lon is similar)
+                    if (Math.abs(c.lon - nextC.lon) < 0.0001) {
+                        if (sunAzimuth > 180) { // Afternoon/West Sun
+                            // The East side of the street is shadiest
+                            segmentScore = Math.max(segmentScore, 40);
+                        } else if (sunAzimuth < 180) { // Morning/East Sun
+                            // The West side of the street is shadiest
+                            segmentScore = Math.max(segmentScore, 40);
+                        }
+                    } 
+                    // If the segment is mostly East-West (lat is similar)
+                    else if (Math.abs(c.lat - nextC.lat) < 0.0001) {
+                        if (sunAzimuth > 90 && sunAzimuth < 270) { // Midday/Southern Sun
+                            // The North side of the street is shadiest
+                            segmentScore = Math.max(segmentScore, 40);
+                        }
+                    }
+                }
+
+                // Ensure the score is not too high if not near a canopy zone
+                totalShadeScore += Math.min(100, segmentScore);
+                numSegments++;
+            }
+
+            return numSegments > 0 ? (totalShadeScore / numSegments) : 0;
+        }
+
+
+        // --- Initialization and Main Call ---
+
+        window.onload = async function() {
+            // Set up current time in the input fields
+            const now = new Date();
+            const timeString = now.toTimeString().split(' ')[0].substring(0, 5);
+            document.getElementById('timeOfDay').value = timeString;
+
+            initMap();
+            showMessage("Initializing Firebase...");
+            await initFirebaseAndAuth();
+            hideMessage();
+        };
+        
+        // Expose function globally for the button click
+        window.findShadyRoutes = findShadyRoutes;
+    </script>
+</body>
+</html>
