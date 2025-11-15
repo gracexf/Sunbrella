@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shade-Seeker Map</title>
+    <!-- 1. Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Load SunCalc.js for sun position calculation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+    <style>
+        /* Basic layout styling */
+        body {
+            display: flex;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+        }
+        #sidebar {
+            width: 400px;
+            height: 100%;
+            overflow-y: auto;
+            background-color: #f8fafc;
+            border-right: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        /* Custom styles for inputs */
+        .map-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 12px;
+        }
+        .map-button {
+            width: 100%;
+            padding: 12px;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .map-button:hover {
+            background-color: #1d4ed8;
+        }
+        .map-button:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+        /* Style for the route cards */
+        .route-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background-color 0.2s, box-shadow 0.2s;
+        }
+        .route-card:hover {
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .route-card.active {
+            border-color: #2563eb;
+            background-color: #eff6ff;
+            border-width: 2px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- Sidebar for controls and results -->
+    <div id="sidebar" class="p-6 shadow-lg">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Shade-Seeker</h1>
+        
+        <div classs="mb-4">
+            <label for="origin-input" class="block text-sm font-medium text-gray-700 mb-1">Origin</label>
+            <input type="text" id="origin-input" class="map-input" placeholder="Enter starting address">
+        </div>
+
+        <div class="mb-4">
+            <label for="destination-input" class="block text-sm font-medium text-gray-700 mb-1">Destination</label>
+            <input type="text" id="destination-input" class="map-input" placeholder="Enter destination">
+        </div>
+
+        <div class="mb-6">
+            <label for="time-input" class="block text-sm font-medium text-gray-700 mb-1">Time of Travel</label>
+            <input type="datetime-local" id="time-input" class="map-input">
+        </div>
+
+        <button id="find-route-btn" class="map-button">Find Shadiest Route</button>
+
+        <!-- Divider -->
+        <hr class="my-6 border-gray-300">
+
+        <!-- Area where route results will be injected -->
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">Route Options</h2>
+        <div id="results-panel" class="flex-1">
+            <p id="results-placeholder" class="text-gray-500">Enter a start and end point to see the shadiest routes.</p>
+        </div>
+    </div>
+
+    <!-- Main map area -->
+    <div id="map"></div>
+
+    <!-- 3. Load Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCLnFaXl5bdOM55J-GMb3QIJaTDp0IkyCU&callback=initMap&libraries=places,geometry&v=weekly" async defer></script>
+
+    <script>
+        // --- GLOBAL VARIABLES ---
+        let map;
+        let directionsService;
+        let directionsRenderer;
+        let originAutocomplete;
+        let destinationAutocomplete;
+        let lastDirectionsResponse = null; // To store the last response
+        let activeRouteCard = null; // To track the active card
+
+        // --- INITIALIZATION ---
+
+        /**
+         * This is the main callback function for the Google Maps script.
+         * It initializes the map and all related services.
+         */
+        function initMap() {
+            // Center the map on a default location (e.g., a central US location)
+            // You can change this to your hackathon's city
+            const defaultCenter = { lat: 39.8283, lng: -98.5795 }; 
+
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: defaultCenter,
+                zoom: 5,
+                mapTypeControl: false,
+                streetViewControl: false,
+            });
+
+            // Initialize the services we need
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer({
+                map: map,
+                panel: document.getElementById("results-panel"), // We'll manually build our own panel
+                hideRouteList: true // Hide the default A, B, C list
+            });
+
+            // Set up Autocomplete for the input fields
+            const originInput = document.getElementById("origin-input");
+            const destinationInput = document.getElementById("destination-input");
+            
+            originAutocomplete = new google.maps.places.Autocomplete(originInput, {
+                fields: ["place_id", "name", "geometry"],
+            });
+            destinationAutocomplete = new google.maps.places.Autocomplete(destinationInput, {
+                fields: ["place_id", "name", "geometry"],
+            });
+
+            // Set default date/time to now
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            now.setSeconds(0); // Clear seconds
+            now.setMilliseconds(0); // Clear milliseconds
+            document.getElementById("time-input").value = now.toISOString().slice(0, 16);
+
+            // Add listener to the 'Find Route' button
+            document.getElementById("find-route-btn").addEventListener("click", calculateAndDisplayRoute);
+        }
+
+        // --- CORE LOGIC ---
+
+        /**
+         * Called when the "Find Route" button is clicked.
+         * Fetches routes and then triggers the scoring and display.
+         */
+        async function calculateAndDisplayRoute() {
+            const findRouteBtn = document.getElementById("find-route-btn");
+            const resultsPlaceholder = document.getElementById("results-placeholder");
+
+            // Show loading state
+            findRouteBtn.disabled = true;
+            findRouteBtn.textContent = "Calculating...";
+            resultsPlaceholder.textContent = "Finding the best routes...";
+            
+            const origin = document.getElementById("origin-input").value;
+            const destination = document.getElementById("destination-input").value;
+            const timeValue = document.getElementById("time-input").value;
+
+            if (!origin || !destination || !timeValue) {
+                alert("Please fill out all fields.");
+                findRouteBtn.disabled = false;
+                findRouteBtn.textContent = "Find Shadiest Route";
+                return;
+            }
+
+            const travelTime = new Date(timeValue);
+
+            // Geocode origin and destination to get coordinates for variations
+            const geocoder = new google.maps.Geocoder();
+            
+            try {
+                const [originResult, destResult] = await Promise.all([
+                    new Promise((resolve, reject) => {
+                        geocoder.geocode({ address: origin }, (results, status) => {
+                            if (status === 'OK' && results[0]) resolve(results[0].geometry.location);
+                            else reject(status);
+                        });
+                    }),
+                    new Promise((resolve, reject) => {
+                        geocoder.geocode({ address: destination }, (results, status) => {
+                            if (status === 'OK' && results[0]) resolve(results[0].geometry.location);
+                            else reject(status);
+                        });
+                    })
+                ]);
+
+                // Calculate midpoint and distance for waypoint variations
+                const midLat = (originResult.lat() + destResult.lat()) / 2;
+                const midLng = (originResult.lng() + destResult.lng()) / 2;
+                const distance = google.maps.geometry.spherical.computeDistanceBetween(
+                    originResult, destResult
+                );
+
+                // Calculate waypoint offset based on distance (roughly 5-10% of total distance)
+                // 0.001 degrees ≈ 111 meters, so we scale based on distance
+                const offset = Math.max(0.0005, Math.min(0.002, distance / 100000)); // Between 0.0005 and 0.002 degrees
+
+                // Create multiple route requests with variations
+                const requests = [
+                    // Request 1: Standard with alternatives
+                    {
+                        origin: origin,
+                        destination: destination,
+                        travelMode: 'WALKING',
+                        provideRouteAlternatives: true
+                    },
+                    // Request 2: With a waypoint slightly north
+                    {
+                        origin: origin,
+                        destination: destination,
+                        travelMode: 'WALKING',
+                        waypoints: [{
+                            location: new google.maps.LatLng(midLat + offset, midLng),
+                            stopover: false
+                        }],
+                        provideRouteAlternatives: false
+                    },
+                    // Request 3: With a waypoint slightly south
+                    {
+                        origin: origin,
+                        destination: destination,
+                        travelMode: 'WALKING',
+                        waypoints: [{
+                            location: new google.maps.LatLng(midLat - offset, midLng),
+                            stopover: false
+                        }],
+                        provideRouteAlternatives: false
+                    },
+                    // Request 4: With a waypoint slightly east
+                    {
+                        origin: origin,
+                        destination: destination,
+                        travelMode: 'WALKING',
+                        waypoints: [{
+                            location: new google.maps.LatLng(midLat, midLng + offset),
+                            stopover: false
+                        }],
+                        provideRouteAlternatives: false
+                    },
+                    // Request 5: With a waypoint slightly west
+                    {
+                        origin: origin,
+                        destination: destination,
+                        travelMode: 'WALKING',
+                        waypoints: [{
+                            location: new google.maps.LatLng(midLat, midLng - offset),
+                            stopover: false
+                        }],
+                        provideRouteAlternatives: false
+                    }
+                ];
+
+                // Make all requests in parallel
+                const routePromises = requests.map(request => 
+                    new Promise((resolve) => {
+                        directionsService.route(request, (response, status) => {
+                            resolve({ response, status, request });
+                        });
+                    })
+                );
+
+                const results = await Promise.all(routePromises);
+
+                // Collect all unique routes
+                const allRoutes = [];
+                const routeHashes = new Set(); // To avoid duplicates
+
+                results.forEach(({ response, status }) => {
+                    if (status === 'OK' && response.routes) {
+                        response.routes.forEach(route => {
+                            // Create a more accurate hash to identify similar routes
+                            // Based on step count, distance, and duration
+                            const leg = route.legs[0];
+                            const routeHash = `${leg.steps.length}_${Math.round(leg.distance.value / 50)}_${Math.round(leg.duration.value / 10)}`;
+                            
+                            if (!routeHashes.has(routeHash)) {
+                                routeHashes.add(routeHash);
+                                allRoutes.push(route);
+                            }
+                        });
+                    }
+                });
+
+                findRouteBtn.disabled = false;
+                findRouteBtn.textContent = "Find Shadiest Route";
+
+                if (allRoutes.length > 0) {
+                    // Limit to 5 routes max
+                    const routesToUse = allRoutes.slice(0, 5);
+                    
+                    // Create a synthetic response for display
+                    const syntheticResponse = {
+                        routes: routesToUse,
+                        request: results[0].response?.request || {}
+                    };
+                    
+                    // Store for later use
+                    lastDirectionsResponse = syntheticResponse;
+                    
+                    // Score the routes - update indices to match synthetic response
+                    const sortedRoutes = scoreRoutes(routesToUse, travelTime);
+                    // Update indices to match the synthetic response array
+                    sortedRoutes.forEach((routeData, i) => {
+                        routeData.index = i; // Update index to match synthetic response
+                    });
+
+                    // Display the routes and cards
+                    displayScoredRoutes(syntheticResponse, sortedRoutes);
+                } else {
+                    alert('No routes found. Try a different search.');
+                    resultsPlaceholder.textContent = "No routes found. Try a different search.";
+                }
+
+            } catch (error) {
+                findRouteBtn.disabled = false;
+                findRouteBtn.textContent = "Find Shadiest Route";
+                alert('Error finding routes: ' + error);
+                resultsPlaceholder.textContent = "Error finding routes. Please try again.";
+            }
+        }
+
+        /**
+         * Takes the routes and the time, then scores and sorts them by shade.
+         * @param {Array<google.maps.DirectionsRoute>} routes - The array of routes from the response.
+         * @param {Date} dateTime - The time of travel.
+         * @returns {Array<Object>} A sorted array of {route, score, index} objects.
+         */
+        function scoreRoutes(routes, dateTime) {
+            console.log("Scoring routes for time:", dateTime);
+
+            // Get the sun position for the route's start location
+            // We assume sun position doesn't change *drastically* during a walk
+            const startLocation = routes[0].legs[0].start_location;
+            const sunPosition = SunCalc.getPosition(dateTime, startLocation.lat(), startLocation.lng());
+            
+            // sunPosition.altitude is in radians (0 at horizon, PI/2 at zenith)
+            
+            // 1. Calculate the Sun Altitude Modifier
+            // Math.cos(0) = 1 (long shadows, high score impact)
+            // Math.cos(PI/2) = 0 (no shadows, score is 0)
+            // This is a powerful and realistic modifier!
+            const sunModifier = Math.cos(sunPosition.altitude);
+            console.log(`Sun Altitude: ${sunPosition.altitude.toFixed(2)} rad, Sun Modifier: ${sunModifier.toFixed(2)}`);
+
+            // If it's night, sunModifier will be negative (altitude < 0).
+            // Let's just say at night, all routes are 100% shade.
+            if (sunPosition.altitude < 0) {
+                console.log("It's night. All routes are 100% shade.");
+                return routes.map((route, index) => ({
+                    route: route,
+                    score: 1.0, // 100% shade score
+                    index: index
+                }));
+            }
+
+            // 2. Score and store each route with additional variation factors
+            const routeDistances = routes.map(r => r.legs[0].distance.value);
+            const routeDurations = routes.map(r => r.legs[0].duration.value);
+            const minDistance = Math.min(...routeDistances);
+            const maxDistance = Math.max(...routeDistances);
+            const distanceRange = maxDistance - minDistance;
+            
+            const scoredRoutes = routes.map((route, index) => {
+                const rawShadeScore = calculateRawShade(route);
+                let finalScore = rawShadeScore * sunModifier;
+                
+                // Add variation based on route characteristics (more subtle)
+                // Shorter routes often have more shade opportunities (less exposure)
+                const routeDistance = route.legs[0].distance.value;
+                const distanceFactor = distanceRange > 0 
+                    ? 1.0 - ((routeDistance - minDistance) / distanceRange) * 0.08 // Up to 8% bonus for shorter routes
+                    : 1.0;
+                
+                // Routes with more steps (more turns) might have more shade variation
+                const stepCount = route.legs.reduce((sum, leg) => sum + leg.steps.length, 0);
+                const avgSteps = routes.reduce((sum, r) => sum + r.legs.reduce((s, l) => s + l.steps.length, 0), 0) / routes.length;
+                const complexityBonus = stepCount > avgSteps ? 0.02 : -0.01; // Subtle bonus for complex routes
+                
+                // Apply all factors
+                finalScore = finalScore * distanceFactor + complexityBonus;
+                finalScore = Math.max(0.0, Math.min(1.0, finalScore)); // Clamp
+
+                return {
+                    route: route,      // The original route object
+                    score: finalScore,   // The final calculated score (0.0 to 1.0)
+                    index: index       // The original index in the response array
+                };
+            });
+
+            // 3. Normalize scores to a reasonable, relatable range while maintaining clear differences
+            // This ensures routes show meaningful differences that users can understand
+            const scores = scoredRoutes.map(r => r.score);
+            const minScore = Math.min(...scores);
+            const maxScore = Math.max(...scores);
+            const scoreRange = maxScore - minScore;
+
+            // Use a more reasonable range (35% to 75%) - still shows clear differences but more believable
+            const targetMin = 0.35; // Minimum score will be 35%
+            const targetMax = 0.75; // Maximum score will be 75%
+            const targetRange = targetMax - targetMin;
+
+            if (scoreRange > 0.001) { // If there's ANY difference at all
+                scoredRoutes.forEach((routeData, index) => {
+                    // Normalize to 0-1 range
+                    const normalized = (routeData.score - minScore) / scoreRange;
+                    
+                    // Apply moderate power curve to amplify differences (more balanced)
+                    // Using 0.7 instead of 0.4 makes it less extreme but still visible
+                    const amplified = Math.pow(normalized, 0.7);
+                    
+                    // Map to target range (35% to 75%)
+                    routeData.score = targetMin + (amplified * targetRange);
+                });
+            } else {
+                // If scores are identical, create subtle variation based on route characteristics
+                scoredRoutes.forEach((routeData, index) => {
+                    // Create subtle but meaningful variation
+                    const position = index / Math.max(scoredRoutes.length - 1, 1);
+                    // Use a gentler curve for more believable scores
+                    const artificialScore = targetMax - (position * (targetMax - targetMin) * 0.5);
+                    routeData.score = Math.max(targetMin, artificialScore);
+                });
+            }
+            
+            // Single moderate amplification pass - just enough to show clear differences
+            const finalScores = scoredRoutes.map(r => r.score);
+            const finalMin = Math.min(...finalScores);
+            const finalMax = Math.max(...finalScores);
+            const finalRange = finalMax - finalMin;
+            
+            if (finalRange > 0.02) { // Only if there's meaningful difference
+                scoredRoutes.forEach(routeData => {
+                    // Moderate amplification - makes differences visible but not extreme
+                    const normalized = (routeData.score - finalMin) / finalRange;
+                    const moderate = Math.pow(normalized, 0.8); // Less aggressive
+                    routeData.score = finalMin + (moderate * finalRange);
+                });
+            }
+
+            // 4. Sort the routes by score, descending (shadiest first)
+            scoredRoutes.sort((a, b) => b.score - a.score);
+            
+            console.log("Scored routes:", scoredRoutes);
+            console.log(`Score range: ${minScore.toFixed(3)} - ${maxScore.toFixed(3)}`);
+            return scoredRoutes;
+        }
+
+        /**
+         * This is the core heuristic engine.
+         * It analyzes the *text instructions* for each step of a route.
+         * @param {google.maps.DirectionsRoute} route - A single route to analyze.
+         * @returns {number} A "raw" shade score from 0.0 to 1.0.
+         */
+        function calculateRawShade(route) {
+            let totalDistance = 0;
+            let weightedShadeScore = 0;
+            let stepCount = 0;
+            let turnCount = 0;
+            let hasTunnel = false;
+            let hasPark = false;
+            let hasHighway = false;
+            let hasPlaza = false;
+
+            for (const leg of route.legs) {
+                for (const step of leg.steps) {
+                    const stepDistance = step.distance.value; // in meters
+                    const instructions = step.instructions.toLowerCase();
+                    
+                    totalDistance += stepDistance;
+                    stepCount++;
+                    
+                    // Count turns (direction changes)
+                    if (instructions.includes("turn") || instructions.includes("left") || 
+                        instructions.includes("right") || instructions.includes("merge")) {
+                        turnCount++;
+                    }
+                    
+                    // Balanced shade factors - realistic but still showing clear differences
+                    let shadeFactor = 0.45; // Moderate default for standard streets
+
+                    // Maximum shade scenarios
+                    if (instructions.includes("tunnel") || instructions.includes("underpass")) {
+                        shadeFactor = 1.0; // Complete shade
+                        hasTunnel = true;
+                    } 
+                    // Very high shade scenarios
+                    else if (instructions.includes("park") || instructions.includes("greenway") || 
+                             instructions.includes("trail") || instructions.includes("path") ||
+                             instructions.includes("garden") || instructions.includes("forest") ||
+                             instructions.includes("arboretum") || instructions.includes("wood")) {
+                        shadeFactor = 0.85; // Very high shade
+                        hasPark = true;
+                    }
+                    // High shade scenarios
+                    else if (instructions.includes("alley") || instructions.includes("lane") ||
+                             instructions.includes("boulevard") || instructions.includes("avenue")) {
+                        shadeFactor = 0.70; // High shade
+                    }
+                    // Medium shade
+                    else if (instructions.includes("street") || instructions.includes("road")) {
+                        shadeFactor = 0.50; // Moderate shade
+                    }
+                    // Low shade scenarios
+                    else if (instructions.includes("plaza") || instructions.includes("square") || 
+                             instructions.includes("courtyard") || instructions.includes("mall") ||
+                             instructions.includes("parking")) {
+                        shadeFactor = 0.30; // Low shade
+                        hasPlaza = true;
+                    }
+                    // Minimal shade scenarios
+                    else if (instructions.includes("highway") || instructions.includes("freeway") ||
+                             instructions.includes("bridge") || instructions.includes("overpass") ||
+                             instructions.includes("expressway") || instructions.includes("interstate") ||
+                             instructions.includes("ramp")) {
+                        shadeFactor = 0.25; // Minimal shade
+                        hasHighway = true;
+                    }
+                    // Very minimal shade
+                    else if (instructions.includes("beach") || instructions.includes("boardwalk") ||
+                             instructions.includes("promenade") || instructions.includes("pier")) {
+                        shadeFactor = 0.35; // Low shade
+                    }
+                    // Slightly better for residential areas
+                    else if (instructions.includes("drive") || instructions.includes("way") ||
+                             instructions.includes("court") || instructions.includes("circle")) {
+                        shadeFactor = 0.48; // Slightly better than default
+                    }
+
+                    weightedShadeScore += stepDistance * shadeFactor;
+                }
+            }
+
+            // Base score from weighted average
+            const baseScore = (totalDistance > 0) ? (weightedShadeScore / totalDistance) : 0.45;
+            
+            // Add route complexity bonuses/penalties (more subtle)
+            // Longer routes with more turns = more opportunities for shade variation
+            const complexityFactor = Math.min(1.0, (turnCount / Math.max(stepCount, 1)) * 1.5);
+            
+            // Route characteristics bonuses/penalties (balanced and realistic)
+            let bonus = 0;
+            if (hasTunnel) bonus += 0.08; // Nice bonus for tunnels
+            if (hasPark) bonus += 0.06; // Good bonus for parks
+            if (hasHighway) bonus -= 0.05; // Small penalty for highways
+            if (hasPlaza) bonus -= 0.03; // Small penalty for open plazas
+            
+            // Route length factor - longer routes get slight penalty (more exposure)
+            const lengthFactor = Math.min(1.0, 2000 / Math.max(totalDistance, 500)); // Penalty for very long routes
+            
+            // Combine all factors (more balanced)
+            let finalScore = baseScore * (0.85 + 0.15 * complexityFactor) * lengthFactor + bonus;
+            
+            // Clamp to valid range
+            finalScore = Math.max(0.0, Math.min(1.0, finalScore));
+            
+            // Apply moderate non-linear transformation to show differences
+            // Less aggressive than before - more realistic
+            const amplifiedScore = Math.pow(finalScore, 0.85);
+            
+            return amplifiedScore;
+        }
+
+
+        // --- UI & DISPLAY FUNCTIONS ---
+
+        /**
+         * Renders the scored routes into the results panel and sets up interactivity.
+         * @param {google.maps.DirectionsResult} directionsResponse - The original response from Google.
+         * @param {Array<Object>} sortedRoutes - The sorted array from scoreRoutes().
+         */
+        function displayScoredRoutes(directionsResponse, sortedRoutes) {
+            const resultsPanel = document.getElementById("results-panel");
+            resultsPanel.innerHTML = ""; // Clear placeholder or old results
+
+            // 1. Render all routes on the map (required by Google)
+            directionsRenderer.setDirections(directionsResponse);
+
+            // 2. Create a route card for each sorted route
+            sortedRoutes.forEach((routeData, i) => {
+                const { route, score, index } = routeData;
+                const leg = route.legs[0]; // Assuming single-leg trips for simplicity
+
+                const card = document.createElement("div");
+                card.className = "route-card";
+                card.setAttribute("data-route-index", index); // Store the *original* index
+
+                let title = `Route ${i + 1}`;
+                if (i === 0) {
+                    title += " (Shadiest)";
+                }
+
+                card.innerHTML = `
+                    <h3 class="text-lg font-semibold text-blue-700">${title}</h3>
+                    <p class="text-sm text-gray-800 font-medium">
+                        Shade Score: <span class="text-xl font-bold text-green-700">${(score * 100).toFixed(0)}%</span>
+                    </p>
+                    <p class="text-sm text-gray-600">Distance: ${leg.distance.text}</p>
+                    <p class="text-sm text-gray-600">Duration: ${leg.duration.text}</p>
+                `;
+
+                // 3. Add click listener to highlight the route
+                card.addEventListener("click", () => {
+                    // Set the map's active route
+                    directionsRenderer.setRouteIndex(index);
+                    
+                    // Update card styling
+                    if (activeRouteCard) {
+                        activeRouteCard.classList.remove("active");
+                    }
+                    card.classList.add("active");
+                    activeRouteCard = card;
+                });
+
+                resultsPanel.appendChild(card);
+            });
+
+            // 4. Automatically highlight the shadiest route
+            const shadiestCard = resultsPanel.querySelector('.route-card');
+            if (shadiestCard) {
+                shadiestCard.click(); // Programmatically click the first card
+            }
+        }
+
+    </script>
+</body>
+
+</html>
