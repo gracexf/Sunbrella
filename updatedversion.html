@@ -243,6 +243,16 @@
             routeSteps = null;
             currentStepIndex = 0;
             activeRouteCard = null;
+
+            // Hide tracker
+            document.getElementById("location-tracker-section").style.display = "none";
+
+            // Clear route cards
+            document.getElementById("results-panel").innerHTML = "";
+
+            // Clear previous rendered routes
+            directionsRenderer.setDirections({ routes: [] });
+
             document.getElementById("location-tracker-section").style.display = "none";
             const findRouteBtn = document.getElementById("find-route-btn");
             const resultsPlaceholder = document.getElementById("results-placeholder");
@@ -273,13 +283,13 @@
                     new Promise((resolve, reject) => {
                         geocoder.geocode({ address: origin }, (results, status) => {
                             if (status === 'OK' && results[0]) resolve(results[0].geometry.location);
-                            else reject(status);
+                            else resolve(null);
                         });
                     }),
                     new Promise((resolve, reject) => {
                         geocoder.geocode({ address: destination }, (results, status) => {
                             if (status === 'OK' && results[0]) resolve(results[0].geometry.location);
-                            else reject(status);
+                            else resolve(null);
                         });
                     })
                 ]);
@@ -297,6 +307,10 @@
                 
                 // Clear old rendered route
                 directionsRenderer.setDirections({ routes: [] });
+
+                if (!originResult || !destResult) {
+                    throw "Geocoding failed. Try again."
+                }
 
                 // Create multiple route requests with variations
                 const requests = [
@@ -414,6 +428,7 @@
                     findRouteBtn.textContent = "Find Shadiest Route";
                     alert('No routes found. Try a different search.');
                     resultsPlaceholder.textContent = "No routes found. Try a different search.";
+                    document.getElementById("results-panel").innerHTML = "";
                 }
 
             } catch (error) {
@@ -687,7 +702,7 @@
 
                 const card = document.createElement("div");
                 card.className = "route-card";
-                card.setAttribute("data-route-index", index); // Store the *original* index
+                card.setAttribute("data-route-index", i);
 
                 let title = `Route ${i + 1}`;
                 if (i === 0) {
@@ -706,7 +721,7 @@
                 // 3. Add click listener to highlight the route
                 card.addEventListener("click", () => {
                     // Set the map's active route
-                    directionsRenderer.setRouteIndex(index);
+                    directionsRenderer.setRouteIndex(i);
                     
                     // Update card styling
                     if (activeRouteCard) {
