@@ -237,6 +237,13 @@
          * Fetches routes and then triggers the scoring and display.
          */
         async function calculateAndDisplayRoute() {
+            // RESET state from previous search
+            selectedRoute = null;
+            routePath = null;
+            routeSteps = null;
+            currentStepIndex = 0;
+            activeRouteCard = null;
+            document.getElementById("location-tracker-section").style.display = "none";
             const findRouteBtn = document.getElementById("find-route-btn");
             const resultsPlaceholder = document.getElementById("results-placeholder");
 
@@ -287,6 +294,9 @@
                 // Calculate waypoint offset based on distance (roughly 5-10% of total distance)
                 // 0.001 degrees ≈ 111 meters, so we scale based on distance
                 const offset = Math.max(0.0005, Math.min(0.002, distance / 100000)); // Between 0.0005 and 0.002 degrees
+                
+                // Clear old rendered route
+                directionsRenderer.setDirections({ routes: [] });
 
                 // Create multiple route requests with variations
                 const requests = [
@@ -400,6 +410,8 @@
                     // Display the routes and cards
                     displayScoredRoutes(syntheticResponse, sortedRoutes);
                 } else {
+                    findRouteBtn.disabled = false;
+                    findRouteBtn.textContent = "Find Shadiest Route";
                     alert('No routes found. Try a different search.');
                     resultsPlaceholder.textContent = "No routes found. Try a different search.";
                 }
