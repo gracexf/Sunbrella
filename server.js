@@ -5,7 +5,7 @@ const port = 3000;
 
 // --- IMPORTANT: Put your NEW, REVOKED API key here ---
 // This file is secure and NOT sent to the user
-const ELEVENLABS_API_KEY = "sk_291b0fe81b8f840a16a7aec2678e9143e9ca1fe0a573470d"; 
+const ELEVENLABS_API_KEY = "sk_effc98830c562a48e4c1eca772c1ab4b9e86d17ef49b0c2c"; 
 const VOICE_ID = "oGn4Ha2pe2vSJkmIJgLQ"; // The 'Amy Farris' voice
 
 app.use(express.json()); // Allow server to read JSON
