@@ -256,7 +256,7 @@
             findRouteBtn.disabled = true;
             findRouteBtn.textContent = "Calculating...";
             resultsPlaceholder.textContent = "Finding the best routes...";
-
+            
             // Clear previous rendered routes
             if (directionsRenderer) {
                 try { directionsRenderer.setDirections({ routes: [] }); } catch(e) { /* ignore */ }
