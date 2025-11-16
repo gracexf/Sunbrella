@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sunbrella</title>
+
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
+
+    <!-- 1. Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Load SunCalc.js for sun position calculation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playwrite+US+Trad:wght@100..400&display=swap" rel="stylesheet">
+    
+    
+</head>
+<body class="bg-gray-100">
+
+    <!-- Sidebar for controls and results -->
+    <div id="sidebar" class="p-6 shadow-lg relative">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Sunbrella</h1>
+            
+            <img src="transparentSunbrellaLogo.png" alt="Sunbrella Logo" id="header-logo">
+
+        </div>
+
+        <div class="mb-4">
+            <label for="origin-input" class="block text-sm font-medium text-gray-700 mb-1">Origin</label>
+            <input type="text" id="origin-input" class="map-input" placeholder="Enter starting address">
+        </div>
+
+        <div class="mb-4">
+            <label for="destination-input" class="block text-sm font-medium text-gray-700 mb-1">Destination</label>
+            <input type="text" id="destination-input" class="map-input" placeholder="Enter destination">
+        </div>
+
+        <div class="mb-6">
+            <label for="time-input" class="block text-sm font-medium text-gray-700 mb-1">Time of Travel</label>
+            <input type="datetime-local" id="time-input" class="map-input">
+        </div>
+
+        <button id="find-route-btn" class="map-button">Find Shadiest Route</button>
+
+        <!-- Divider -->
+        <hr class="my-6 border-gray-300">
+
+        <div class="mb-4 p-3 bg-gray-100 rounded-lg border">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Audio Controls</label>
+        <div class="flex gap-2 justify-center">
+            <button id="instruction-btn" class="p-2 w-1/3 rounded-lg hover:bg-gray-200 text-2xl" 
+                    aria-label="Read instructions">
+                ❓
+            </button>
+            <button id="pause-btn" class="p-2 w-1/3 rounded-lg hover:bg-gray-200 text-2xl" 
+                    aria-label="Pause speech">
+                ⏸️
+            </button>
+            <button id="speech-toggle-btn" class="p-2 w-1/3 rounded-lg hover:bg-gray-200 text-2xl" 
+                    aria-label="Enable voice navigation">
+                🔈
+            </button>
+        </div>
+    </div>
+
+        <!-- Location Tracker Section -->
+        <div id="location-tracker-section" class="mb-6" style="display: none;">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Location Tracker</h2>
+            <button id="start-tracking-btn" class="map-button mb-3">Start Tracking</button>
+            <button id="stop-tracking-btn" class="map-button mb-3" style="display: none; background-color: #dc2626;">Stop Tracking</button>
+            
+            <div id="tracking-status" class="p-3 rounded-lg mb-3" style="background-color: #f1f5f9;">
+                <p class="text-sm font-medium text-gray-700 mb-1">Status: <span id="status-text">Not tracking</span></p>
+                <p class="text-sm text-gray-600 mb-1">Distance to route: <span id="distance-text">-</span></p>
+                <p class="text-sm text-gray-600 mb-1">Next turn in: <span id="next-turn-text">-</span></p>
+                <p class="text-sm font-semibold" id="direction-indicator">Select a route to start tracking</p>
+                <div id="compass-container" class="mt-2" style="display: none;">
+                    <div class="text-xs text-gray-500 mb-1">Direction to route:</div>
+                    <div id="compass-arrow" style="font-size: 24px; text-align: center;">→</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Divider -->
+        <hr class="my-6 border-gray-300">
+
+        <!-- Area where route results will be injected -->
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">Route Options</h2>
+        <div id="results-panel" class="flex-1">
+            <p id="results-placeholder" class="text-gray-500">Enter a start and end point to see the shadiest routes.</p>
+        </div>
+    </div>
+
+    <!-- Main map area -->
+    <div id="map"></div>
+
+    <!-- 3. Load Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCLnFaXl5bdOM55J-GMb3QIJaTDp0IkyCU&callback=initMap&libraries=places,geometry&v=weekly" async defer></script>
+
+    
+</body>
+
+</html>
+
+
