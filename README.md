@@ -28,4 +28,4 @@ To run Sunbrella locally:
 -    4.	Open sunbrella.html in your browser
 
 The application will run directly in your browser.
-[Demo Video] (https://youtu.be/0YCHKEUEQG8?si=Tr9yKawvncQL8XgJ )
+[Demo Video](https://youtu.be/0YCHKEUEQG8?si=Tr9yKawvncQL8XgJ )
