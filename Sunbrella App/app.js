@@ -1,4 +1,8 @@
-// --- GLOBAL VARIABLES ---
+// ==========================================
+// 1. GLOBAL VARIABLES & STATE
+// ==========================================
+
+// -- Map & Routing State --
 let map;
 let directionsService;
 let directionsRenderer;
@@ -7,7 +11,7 @@ let destinationAutocomplete;
 let lastDirectionsResponse = null; // To store the last response
 let activeRouteCard = null; // To track the active card
 
-// Location tracking variables
+// -- Location & Tracking State --
 let isTracking = false;
 let watchId = null;
 let currentLocationMarker = null;
@@ -22,8 +26,7 @@ let currentStepIndex = 0;
 let deviceHeading = null; // Device orientation/compass heading
 let deviceOrientationListener = null;
 
-// Speech variables
-
+// -- Speech & Audio State --
 let isSpeechEnabled = false;
 let speechQueue = [];
 let isSpeaking = false;
@@ -44,16 +47,17 @@ const INSTRUCTION_SCRIPT = `
     Enjoy your shady walk!
 `;
 
-// --- INITIALIZATION ---
 
-/**
- * This is the main callback function for the Google Maps script.
- * It initializes the map and all related services.
- */
+// ========================================== 
+// 2. INITIALIZATION 
+// ==========================================
+// This is the main callback function for the Google Maps script.
+// It initializes the map and all related services.
+
 function initMap() {
     // Center the map on a default location (e.g., a central US location)
     // You can change this to your hackathon's city
-    const defaultCenter = { lat: 39.8283, lng: -98.5795 }; 
+    const defaultCenter = { lat: 33.7501, lng: -84.3885 }; 
 
     map = new google.maps.Map(document.getElementById("map"), {
         center: defaultCenter,
@@ -95,9 +99,6 @@ function initMap() {
     document.getElementById("start-tracking-btn").addEventListener("click", startLocationTracking);
     document.getElementById("stop-tracking-btn").addEventListener("click", stopLocationTracking);
 
-    // Add listener for the 'Find Route' button
-    document.getElementById("find-route-btn").addEventListener("click", calculateAndDisplayRoute);
-    
     // SPEECH LISTENERS
     // --- Instruction Button ---
     const instructionBtn = document.getElementById("instruction-btn");
@@ -141,6 +142,11 @@ function initMap() {
         }
     });
 
+    setupEventListeners();
+    
+}
+
+function setupEventListeners(){
     // Add 'focus' listeners for accessibility
     document.getElementById('origin-input').addEventListener('focus', () => queueSpeech('Origin address'));
     document.getElementById('destination-input').addEventListener('focus', () => queueSpeech('Destination address'));
@@ -152,12 +158,12 @@ function initMap() {
 }
 
 
-// --- CORE LOGIC ---
+// ==========================================
+// 3. ROUTING & SHADE CALCULATION
+// ==========================================
+// Called when the "Find Route" button is clicked.
+// Fetches routes and then triggers the scoring and display.
 
-/**
- * Called when the "Find Route" button is clicked.
- * Fetches routes and then triggers the scoring and display.
- */
 async function calculateAndDisplayRoute() {
     const findRouteBtn = document.getElementById("find-route-btn");
     
@@ -185,15 +191,12 @@ async function calculateAndDisplayRoute() {
     lastDirectionsResponse = null;
     activeRouteCard = null;
 
-    // --- FIX 2: Re-create the placeholder (THE CORE BUG FIX) ---
-    // The placeholder was deleted by displayScoredRoutes. We must re-create
-    // it *before* we try to get a reference to it.
+    // FIX : Re-create the placeholder (The placeholder was deleted by displayScoredRoutes. We must re-create it *before* we try to get a reference to it.)
     const resultsPanel = document.getElementById("results-panel");
     resultsPanel.innerHTML = '<p id="results-placeholder" class="text-gray-500">Finding the best routes...</p>';
     
     // NOW it's safe to get the reference.
     const resultsPlaceholder = document.getElementById("results-placeholder");
-    // --- END OF FIXES ---
 
     // --- Reset speech state ---
     lastSpokenDirection = "";
@@ -374,13 +377,13 @@ async function calculateAndDisplayRoute() {
     }
 }
 
-/**
- * Takes the routes and the time, then scores and sorts them by shade.
- * @param {Array<google.maps.DirectionsRoute>} routes - The array of routes from the response.
- * @param {Date} dateTime - The time of travel.
- * @returns {Array<Object>} A sorted array of {route, score, index} objects.
- */
+
 function scoreRoutes(routes, dateTime) {
+    // Takes the routes and the time, then scores and sorts them by shade.
+    // @param {Array<google.maps.DirectionsRoute>} routes - The array of routes from the response.
+    // @param {Date} dateTime - The time of travel.
+    // @returns {Array<Object>} A sorted array of {route, score, index} objects.
+
     console.log("Scoring routes for time:", dateTime);
 
     // Get the sun position for the route's start location
@@ -393,12 +396,11 @@ function scoreRoutes(routes, dateTime) {
     // 1. Calculate the Sun Altitude Modifier
     // Math.cos(0) = 1 (long shadows, high score impact)
     // Math.cos(PI/2) = 0 (no shadows, score is 0)
-    // This is a powerful and realistic modifier!
     const sunModifier = Math.cos(sunPosition.altitude);
     console.log(`Sun Altitude: ${sunPosition.altitude.toFixed(2)} rad, Sun Modifier: ${sunModifier.toFixed(2)}`);
 
     // If it's night, sunModifier will be negative (altitude < 0).
-    // Let's just say at night, all routes are 100% shade.
+    // At night, all routes are 100% shade.
     if (sunPosition.altitude < 0) {
         console.log("It's night. All routes are 100% shade.");
         return routes.map((route, index) => ({
@@ -500,13 +502,13 @@ function scoreRoutes(routes, dateTime) {
     return scoredRoutes;
 }
 
-/**
- * This is the core heuristic engine.
- * It analyzes the *text instructions* for each step of a route.
- * @param {google.maps.DirectionsRoute} route - A single route to analyze.
- * @returns {number} A "raw" shade score from 0.0 to 1.0.
- */
+
 function calculateRawShade(route) {
+//  This is the core heuristic engine.
+//  It analyzes the *text instructions* for each step of a route.
+//  @param {google.maps.DirectionsRoute} route - A single route to analyze.
+//  @returns {number} A "raw" shade score from 0.0 to 1.0.
+
     let totalDistance = 0;
     let weightedShadeScore = 0;
     let stepCount = 0;
@@ -616,14 +618,16 @@ function calculateRawShade(route) {
 }
 
 
-// --- UI & DISPLAY FUNCTIONS ---
+// ==========================================
+// 4. UI & DOM UPDATES
+// ==========================================
 
-/**
- * Renders the scored routes into the results panel and sets up interactivity.
- * @param {google.maps.DirectionsResult} directionsResponse - The original response from Google.
- * @param {Array<Object>} sortedRoutes - The sorted array from scoreRoutes().
- */
+
 function displayScoredRoutes(directionsResponse, sortedRoutes) {
+//  Renders the scored routes into the results panel and sets up interactivity.
+//  @param {google.maps.DirectionsResult} directionsResponse - The original response from Google.
+//  @param {Array<Object>} sortedRoutes - The sorted array from scoreRoutes().
+
     const resultsPanel = document.getElementById("results-panel");
     resultsPanel.innerHTML = ""; // Clear placeholder or old results
 
