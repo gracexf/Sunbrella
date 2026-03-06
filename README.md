@@ -29,4 +29,4 @@ To run Sunbrella locally:
 
 The application will run directly in your browser.
 
-- ### [Click here to watch our Demo Video](https://youtu.be/0YCHKEUEQG8?si=Tr9yKawvncQL8XgJ )
+### [Click here to watch our Demo Video](https://youtu.be/0YCHKEUEQG8?si=Tr9yKawvncQL8XgJ )
