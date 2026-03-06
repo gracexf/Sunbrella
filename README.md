@@ -22,7 +22,7 @@ After moving to Atlanta and attending Emory, we quickly realized how intense the
 ## Installation & Running Sunbrella
 
 To run Sunbrella locally:
--    1.	Download or clone the repository
+-    1.	Download the "Sunbrella App" folder (Do not use the "Archive" folder, that is for documenting progress)
 -    2.	If downloaded as a ZIP, unzip the folder
 -    3.	Locate the file sunbrella.html
 -    4.	Open sunbrella.html in your browser
