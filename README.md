@@ -1,4 +1,5 @@
 <img width="100" height="100" alt="SunbrellaLogo-removebg-preview" src="https://github.com/user-attachments/assets/5660150c-ba66-4e6b-b7d1-19152cafa71a" />
+
 # Sunbrella ☀️🌳
 
 A tool for finding cooler, shaded walking routes.
