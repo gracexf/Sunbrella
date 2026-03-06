@@ -24,7 +24,7 @@ After moving to Atlanta and attending Emory, we quickly realized how intense the
 To run Sunbrella locally:
 -    1.	Download or clone the repository
 -    2.	If downloaded as a ZIP, unzip the folder
--    3.	Locate the file index.html
--    4.	Open index.html in your browser
+-    3.	Locate the file sunbrella.html
+-    4.	Open sunbrella.html in your browser
 
 The application will run directly in your browser.
