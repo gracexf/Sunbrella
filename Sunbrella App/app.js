@@ -54,9 +54,10 @@ const INSTRUCTION_SCRIPT = `
 // This is the main callback function for the Google Maps script.
 // It initializes the map and all related services.
 
+// Center the map on a default location (e.g., a central US location)
+// You can change this to your hackathon's city
 function initMap() {
-    // Center the map on a default location (e.g., a central US location)
-    // You can change this to your hackathon's city
+
     const defaultCenter = { lat: 33.7501, lng: -84.3885 }; 
 
     map = new google.maps.Map(document.getElementById("map"), {
@@ -146,8 +147,8 @@ function initMap() {
     
 }
 
+// Add 'focus' listeners for accessibility
 function setupEventListeners(){
-    // Add 'focus' listeners for accessibility
     document.getElementById('origin-input').addEventListener('focus', () => queueSpeech('Origin address'));
     document.getElementById('destination-input').addEventListener('focus', () => queueSpeech('Destination address'));
     document.getElementById('time-input').addEventListener('focus', () => queueSpeech('Time of travel'));
@@ -161,9 +162,9 @@ function setupEventListeners(){
 // ==========================================
 // 3. ROUTING & SHADE CALCULATION
 // ==========================================
+
 // Called when the "Find Route" button is clicked.
 // Fetches routes and then triggers the scoring and display.
-
 async function calculateAndDisplayRoute() {
     const findRouteBtn = document.getElementById("find-route-btn");
     
@@ -377,12 +378,11 @@ async function calculateAndDisplayRoute() {
     }
 }
 
-
+// Takes the routes and the time, then scores and sorts them by shade.
+// @param {Array<google.maps.DirectionsRoute>} routes - The array of routes from the response.
+// @param {Date} dateTime - The time of travel.
+// @returns {Array<Object>} A sorted array of {route, score, index} objects.
 function scoreRoutes(routes, dateTime) {
-    // Takes the routes and the time, then scores and sorts them by shade.
-    // @param {Array<google.maps.DirectionsRoute>} routes - The array of routes from the response.
-    // @param {Date} dateTime - The time of travel.
-    // @returns {Array<Object>} A sorted array of {route, score, index} objects.
 
     console.log("Scoring routes for time:", dateTime);
 
@@ -502,12 +502,11 @@ function scoreRoutes(routes, dateTime) {
     return scoredRoutes;
 }
 
-
-function calculateRawShade(route) {
 //  This is the core heuristic engine.
 //  It analyzes the *text instructions* for each step of a route.
 //  @param {google.maps.DirectionsRoute} route - A single route to analyze.
 //  @returns {number} A "raw" shade score from 0.0 to 1.0.
+function calculateRawShade(route) {
 
     let totalDistance = 0;
     let weightedShadeScore = 0;
@@ -622,11 +621,10 @@ function calculateRawShade(route) {
 // 4. UI & DOM UPDATES
 // ==========================================
 
-
-function displayScoredRoutes(directionsResponse, sortedRoutes) {
 //  Renders the scored routes into the results panel and sets up interactivity.
 //  @param {google.maps.DirectionsResult} directionsResponse - The original response from Google.
 //  @param {Array<Object>} sortedRoutes - The sorted array from scoreRoutes().
+function displayScoredRoutes(directionsResponse, sortedRoutes) {
 
     const resultsPanel = document.getElementById("results-panel");
     resultsPanel.innerHTML = ""; // Clear placeholder or old results
@@ -715,12 +713,13 @@ function displayScoredRoutes(directionsResponse, sortedRoutes) {
     }
 }
 
-// --- LOCATION TRACKING FUNCTIONS ---
 
-/**
- * Extracts the path (array of LatLng points) from a route
- */
-function extractRoutePath(route) {
+// ==========================================
+// 5. GEOLOCATION & NAVIGATION
+// ==========================================
+
+// Extracts the path (array of LatLng points) from a route
+function extractRoutePath(route) {  
     const path = [];
     for (const leg of route.legs) {
         for (const step of leg.steps) {
@@ -733,9 +732,8 @@ function extractRoutePath(route) {
     return path;
 }
 
-/**
- * Extracts route steps with instructions for navigation
- */
+
+// Extracts route steps with instructions for navigation
 function extractRouteSteps(route) {
     const steps = [];
     for (const leg of route.legs) {
@@ -752,9 +750,8 @@ function extractRouteSteps(route) {
     return steps;
 }
 
-/**
- * Starts tracking the user's location
- */
+
+// Starts tracking the user's location
 function startLocationTracking() {
     queueSpeech("Starting location tracking.");
 
@@ -860,9 +857,8 @@ function startLocationTracking() {
     );
 }
 
-/**
- * Stops tracking the user's location
- */
+
+// Stops tracking the user's location
 function stopLocationTracking() {
     queueSpeech("Stopping location tracking.");
     lastSpokenDirection = "";
@@ -904,9 +900,8 @@ function stopLocationTracking() {
     deviceHeading = null;
 }
 
-/**
- * Checks if the user is going in the right direction
- */
+
+// Checks if the user is going in the right direction
 function checkDirection() {
     if (!currentLocation || !routePath || routePath.length === 0) {
         return;
@@ -1057,9 +1052,8 @@ function checkDirection() {
 
 }
 
-/**
- * Draws a line indicating the direction the user is moving
- */
+
+// Draws a line indicating the direction the user is moving
 function drawDirectionIndicator(from, to) {
     if (directionPolyline) {
         directionPolyline.setPath([from, to]);
@@ -1076,9 +1070,8 @@ function drawDirectionIndicator(from, to) {
     }
 }
 
-/**
- * Starts tracking device orientation for compass heading
- */
+
+// Starts tracking device orientation for compass heading
 function startDeviceOrientationTracking() {
     // Try DeviceOrientationEvent API first (iOS 13+)
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -1101,9 +1094,8 @@ function startDeviceOrientationTracking() {
     }
 }
 
-/**
- * Stops tracking device orientation
- */
+
+// Stops tracking device orientation
 function stopDeviceOrientationTracking() {
     if (deviceOrientationListener === 'deviceorientation') {
         window.removeEventListener('deviceorientation', handleDeviceOrientation);
@@ -1113,9 +1105,8 @@ function stopDeviceOrientationTracking() {
     deviceOrientationListener = null;
 }
 
-/**
- * Handles device orientation events
- */
+
+// Handles device orientation events
 function handleDeviceOrientation(event) {
     if (event.alpha !== null && event.alpha !== undefined) {
         // alpha is the compass heading (0-360 degrees)
@@ -1125,9 +1116,7 @@ function handleDeviceOrientation(event) {
     }
 }
 
-/**
- * Handles device motion events (fallback)
- */
+// Handles device motion events (fallback)
 function handleDeviceMotion(event) {
     // This is a fallback, less accurate than orientation
     if (event.rotationRate && event.rotationRate.alpha !== null) {
@@ -1136,9 +1125,7 @@ function handleDeviceMotion(event) {
     }
 }
 
-/**
- * Updates the navigation arrow pointing toward the route
- */
+// Updates the navigation arrow pointing toward the route
 function updateNavigationArrow() {
     if (!currentLocation || !routePath || routePath.length === 0) {
         return;
@@ -1227,9 +1214,7 @@ function updateNavigationArrow() {
     }
 }
 
-/**
- * Converts heading (degrees) to arrow emoji
- */
+// Converts heading (degrees) to arrow emoji
 function getArrowFromHeading(heading) {
     // Normalize heading to 0-360
     let normalizedHeading = heading;
@@ -1261,11 +1246,11 @@ function getArrowFromHeading(heading) {
 }
 
 
-// --- SPEECH FUNCTIONS ---
+// ==========================================
+// 6. SPEECH & AUDIO ENGINE
+// ==========================================
 
-/**
- * Stops any currently playing audio and clears it.
- */
+// Stops any currently playing audio and clears it.
 function stopCurrentSpeech() {
     if (currentAudio) {
         currentAudio.onended = null;
@@ -1280,11 +1265,9 @@ function stopCurrentSpeech() {
     isSpeaking = false; // Tell the queue system it's free
 }
 
-/**
- * Adds text to the speech queue and starts processing.
- * @param {string} text - The text to be spoken.
- * @param {boolean} [force=false] - If true, speaks even if isSpeechEnabled is false (for alerts).
- */
+// Adds text to the speech queue and starts processing.
+// @param {string} text - The text to be spoken.
+// @param {boolean} [force=false] - If true, speaks even if isSpeechEnabled is false (for alerts).
 function queueSpeech(text, force = false) {
     if (!isSpeechEnabled && !force) {
         return; // Speech is off, do nothing
@@ -1306,9 +1289,8 @@ function queueSpeech(text, force = false) {
     }
 }
 
-/**
- * Processes the next item in the speech queue.
- */
+
+// Processes the next item in the speech queue.
 function processSpeechQueue() {
     if (isSpeaking || speechQueue.length === 0) {
         return; // Already speaking or queue is empty
@@ -1323,10 +1305,8 @@ function processSpeechQueue() {
     speakText(cleanText);
 }
 
-/**
- * Sends text to ElevenLabs API and plays the returned audio.
- * @param {string} text - The plain text to speak.
- */
+//  Sends text to ElevenLabs API and plays the returned audio.
+//  @param {string} text - The plain text to speak.
 async function speakText(text) {
     if (!text || text.trim().length === 0) {
         isSpeaking = false;
