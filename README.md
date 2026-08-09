@@ -1,4 +1,4 @@
-<img width="200" height="200" alt="SunbrellaLogo-removebg-preview" src="https://github.com/user-attachments/assets/5660150c-ba66-4e6b-b7d1-19152cafa71a" />
+<img width="768" height="512" alt="AA155D25-C1F0-453C-9D39-889DC075EB2E" src="https://github.com/user-attachments/assets/6210c347-7cb0-4a79-9d84-f1e0b1b326ac" />
 
 # Sunbrella ☀️🌳
 
