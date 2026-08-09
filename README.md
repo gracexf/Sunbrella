@@ -1,4 +1,4 @@
-<img width="768" height="512" alt="AA155D25-C1F0-453C-9D39-889DC075EB2E" src="https://github.com/user-attachments/assets/6210c347-7cb0-4a79-9d84-f1e0b1b326ac" />
+<img width="256" height="171" alt="AA155D25-C1F0-453C-9D39-889DC075EB2E" src="https://github.com/user-attachments/assets/6210c347-7cb0-4a79-9d84-f1e0b1b326ac" />
 
 # Sunbrella ☀️🌳
 
